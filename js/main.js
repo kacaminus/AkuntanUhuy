@@ -1,6 +1,7 @@
 // Titik masuk: menggambar tampilan dan menangani semua interaksi (event delegation).
 import {
   barisKosong,
+  analisaTempelan,
   draftBaru,
   hariAktif,
   hapusNota,
@@ -13,6 +14,7 @@ import {
   petaSupplier,
   sb,
   simpanNota,
+  simpanNotaMassal,
   simpanRab,
   state,
   tanggalAda,
@@ -20,9 +22,11 @@ import {
 } from './store.js';
 import { cetakExcel, unduhExcel } from './excel.js';
 import {
+  perbaruiPratinjau,
   perbaruiRab,
   renderAnggaran,
   renderBbbp,
+  renderImpor,
   renderInput,
   renderLogin,
   renderPO,
@@ -35,6 +39,7 @@ import { $, akhirBulan, rupiah } from './utils.js';
 const TAMPILAN = {
   login: renderLogin,
   ringkasan: renderRingkasan,
+  impor: renderImpor,
   input: renderInput,
   po: renderPO,
   rab: renderRab,
@@ -44,6 +49,7 @@ const TAMPILAN = {
 const TAB = [
   ['ringkasan', 'Ringkasan', 'violet'],
   ['input', 'Input Nota', 'pink'],
+  ['impor', 'Tempel Excel', 'violet'],
   ['po', 'Nota / PO', 'sky'],
   ['rab', 'RAB Harian', 'yellow'],
   ['anggaran', 'Anggaran', 'green'],
@@ -143,6 +149,26 @@ const aksi = {
     state.notaId = null;
     render();
   },
+  simpanImpor: () =>
+    jalankan(async () => {
+      const hasil = analisaTempelan();
+      const baru = hasil.nota.filter((n) => !n.duplikat);
+      if (hasil.bermasalah.length || !baru.length) return;
+      const supplier = petaSupplier();
+      const jumlah = await simpanNotaMassal(
+        baru.map((n) => ({
+          tanggal: n.tanggal,
+          supplier: n.supplier,
+          alamat: supplier.get(n.supplier.toLowerCase())?.alamat ?? '',
+          bukti: n.bukti,
+          baris: n.items,
+        })),
+      );
+      state.impor = { teks: '', geser: state.impor.geser, ganti: {} };
+      Object.assign(state, { tab: 'po', hari: baru[0].tanggal, notaId: null });
+      render();
+      alert(`${jumlah} nota berhasil disimpan.`);
+    }),
   cetak: ({ kind, id }) => jalankan(() => cetakExcel(kind, id)),
   unduh: ({ kind, id }) => jalankan(() => unduhExcel(kind, id)),
   masuk: () =>
@@ -176,6 +202,10 @@ const ubah = {
     state.hari = el.value;
     state.notaId = null;
     render();
+  },
+  imporSupplier: (el, { kunci }) => {
+    state.impor.ganti[kunci] = el.value;
+    perbaruiPratinjau();
   },
   rentangDari: (el) => {
     if (!el.value) return;
@@ -235,6 +265,15 @@ const ketik = {
   },
   bukti: (el) => {
     state.draft.bukti = el.value;
+  },
+  tempel: (el) => {
+    state.impor.teks = el.value;
+    state.impor.ganti = {};
+    perbaruiPratinjau();
+  },
+  geser: (el) => {
+    state.impor.geser = Number(el.value) || 0;
+    perbaruiPratinjau();
   },
   qty: (el, { i }) => ketikAngka('qty', el, i),
   harga: (el, { i }) => ketikAngka('harga', el, i),

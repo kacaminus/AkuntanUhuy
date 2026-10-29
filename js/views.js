@@ -4,6 +4,7 @@ import { ANGGARAN, INSTANSI, KOP_PO, PAKET } from './instansi.js';
 import { SEKOLAH } from './master-data.js';
 import { laporanAnggaran, laporanBbbp, laporanPO, laporanRab, notaRentang } from './reports.js';
 import {
+  analisaTempelan,
   hariAktif,
   namaSheet,
   notaUrut,
@@ -383,4 +384,97 @@ export function renderRingkasan() {
     </div>
     ${bulan.length ? `<div class="tabs">${bulan.map(pilihBulan).join('')}</div>` : ''}
     ${isi}`;
+}
+
+// ---------- Tempel dari Excel (mis. sheet B_BahanBaku pada LPDH) ----------
+const CATATAN_SUPPLIER = {
+  ada: '',
+  mirip: '<span class="pill kuning">dicocokkan - periksa</span>',
+  baru: '<span class="pill biru">supplier baru</span>',
+};
+
+function htmlPratinjau() {
+  const { impor } = state;
+  if (!impor.teks.trim()) return '';
+  const hasil = analisaTempelan();
+  if (hasil.galat) return `<div class="card banner">${esc(hasil.galat)}</div>`;
+  const baru = hasil.nota.filter((n) => !n.duplikat);
+  const suppliers = [...petaSupplier().values()].map((s) => s.nama);
+  const totalBaru = baru.reduce((t, n) => t + n.total, 0);
+  const jumlahPeringatan = hasil.baris.filter((b) => b.peringatan.length).length;
+  const blokNota = (n) => `
+    <div class="card nota-impor${n.duplikat ? ' lewat' : ''}">
+      <div class="row between">
+        <div><b>${tanggalIndo(n.tanggal)}</b>${n.tanggal !== n.tanggalAsli ? ` <span class="m">(di Excel: ${formatDMY(n.tanggalAsli)})</span>` : ''}<br>
+          <span class="m">No. bukti: ${esc(n.bukti) || '-'} &middot; ${n.items.length} item &middot; ${rupiah(n.total)}</span></div>
+        <div class="row" style="align-items:center">
+          ${CATATAN_SUPPLIER[n.statusSupplier]}
+          <select data-chg="imporSupplier" data-kunci="${esc(n.kunci)}" aria-label="Supplier">
+            ${suppliers.map((s) => `<option value="${esc(s)}"${s === n.supplier ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+            ${suppliers.includes(n.supplier) ? '' : `<option value="${esc(n.supplier)}" selected>(baru) ${esc(n.supplier)}</option>`}
+          </select>
+          <span class="pill ${n.duplikat ? 'kuning' : 'hijau'}">${n.duplikat ? 'Sudah ada - dilewati' : 'Baru'}</span>
+        </div>
+      </div>
+      <table class="mini">
+        <tr><th>Bahan</th><th>Kategori</th><th class="r">Volume</th><th>Satuan</th><th class="r">Harga</th><th class="r">Jumlah</th></tr>
+        ${n.items
+          .map(
+            (i) => `<tr${i.peringatan.length ? ` class="peringatan" title="${esc(i.peringatan.join('; '))}"` : ''}>
+              <td>${esc(i.uraian)}</td><td>${esc(i.kategori)}</td><td class="r">${i.qty}</td><td>${esc(i.satuan)}</td>
+              <td class="r">${rupiah(i.harga)}</td><td class="r">${rupiah(i.qty * i.harga)}</td></tr>`,
+          )
+          .join('')}
+      </table>
+    </div>`;
+  return `
+    <div class="card">
+      <div class="row between">
+        <div><b>${hasil.baris.length} baris dibaca</b> &rarr; ${hasil.nota.length} nota (${baru.length} baru${
+          hasil.nota.length > baru.length ? `, ${hasil.nota.length - baru.length} sudah ada` : ''
+        }) &middot; total baru <b>${rupiah(totalBaru)}</b>
+          <br><span class="m">${hasil.dilewati ? `${hasil.dilewati} baris kosong/ringkasan dilewati. ` : ''}${
+            jumlahPeringatan
+              ? `${jumlahPeringatan} baris: jumlah di Excel tidak sama dengan volume x harga (ditandai kuning).`
+              : ''
+          }</span></div>
+        <button class="btn" data-act="simpanImpor" ${hasil.bermasalah.length || !baru.length ? 'disabled' : ''}>Simpan ${baru.length} nota</button>
+      </div>
+      ${
+        hasil.bermasalah.length
+          ? `<ul class="masalah">${hasil.bermasalah
+              .map(
+                (b) =>
+                  `<li>Baris ${b.no}: ${esc(b.uraian || '(tanpa nama)')} &mdash; ${esc(b.masalah.join(', '))}</li>`,
+              )
+              .join('')}</ul><p class="warn">Perbaiki baris di atas di Excel, lalu tempel ulang.</p>`
+          : ''
+      }
+    </div>
+    ${hasil.nota.map(blokNota).join('')}`;
+}
+
+/** Perbarui hanya bagian pratinjau (tanpa menggambar ulang kotak tempel agar kursor tidak hilang). */
+export function perbaruiPratinjau() {
+  $('#pratinjau').innerHTML = htmlPratinjau();
+}
+
+export function renderImpor() {
+  const { impor } = state;
+  return `
+    <div class="card">
+      <h2>Tempel dari Excel</h2>
+      <ol class="langkah">
+        <li>Di Excel (sheet <b>B_BahanBaku</b>), blok baris yang mau dipindah, dari kolom <b>Tanggal Transaksi</b> sampai <b>No. Bukti/Nota</b> (boleh dengan baris judul), lalu tekan <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+        <li>Klik kotak di bawah, lalu tekan <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+        <li>Periksa pratinjau, lalu klik <b>Simpan</b>. Baris dengan nomor nota yang sama (<code>INV/26/0036-1</code>, <code>-2</code>, ...) digabung menjadi satu nota per pemasok.</li>
+      </ol>
+      <textarea id="tempel" data-inp="tempel" rows="7" placeholder="Tempel data dari Excel di sini...">${esc(impor.teks)}</textarea>
+      <div class="row mt" style="align-items:flex-end">
+        <label style="max-width:300px">Tanggal nota di web = tanggal di Excel + (hari)
+          <input type="number" id="geser" value="${impor.geser}" data-inp="geser"></label>
+        <p class="m" style="flex:1;min-width:220px;margin:0"><small>Isi 0 bila tanggal transaksi di Excel sama dengan tanggal menu di web. Isi 1 bila belanja dilakukan sehari sebelum tanggal menu.</small></p>
+      </div>
+    </div>
+    <div id="pratinjau">${htmlPratinjau()}</div>`;
 }

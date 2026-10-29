@@ -1,6 +1,7 @@
 // State aplikasi, akses database Supabase, dan fungsi pencarian data.
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { analisa } from './impor.js';
 import { INSTANSI } from './instansi.js';
 import { BAHAN, SUPPLIER } from './master-data.js';
 import { akhirBulan, hariIni, maks, pad, ROMAWI } from './utils.js';
@@ -27,6 +28,7 @@ export const state = {
   rab: {}, // { 'YYYY-MM-DD': { menu, pagu } }
   extra: { bahan: [], supplier: [] }, // master tambahan dari database
   draft: draftBaru(),
+  impor: { teks: '', geser: 0, ganti: {} }, // fitur Tempel dari Excel: teks tempelan, geser tanggal, pilihan supplier manual
 };
 
 /** Rentang tanggal BBBP yang sedang dipilih (bawaan: seluruh bulan terakhir yang ada datanya). */
@@ -113,47 +115,89 @@ export async function muatData() {
   state.extra = { bahan: master.data?.bahan ?? [], supplier: master.data?.supplier ?? [] };
 }
 
-export async function simpanNota(draft) {
-  const items = draft.baris
+const PESAN_NOTA = 'Isi supplier dan minimal satu bahan lengkap (qty & harga).';
+
+const bersihkanItems = (baris) =>
+  baris
     .filter((b) => b.uraian && Number(b.qty) > 0 && Number(b.harga) > 0)
-    .map((b) => ({ uraian: b.uraian.trim(), qty: Number(b.qty), satuan: b.satuan, harga: Number(b.harga) }));
-  if (!draft.supplier.trim() || !items.length) {
-    throw new Error('Isi supplier dan minimal satu bahan lengkap (qty & harga).');
-  }
-  const data = {
+    .map((b) => ({
+      uraian: b.uraian.trim(),
+      qty: Number(b.qty),
+      satuan: b.satuan,
+      harga: Number(b.harga),
+      ...(b.kategori ? { kategori: b.kategori } : {}),
+    }));
+
+/** Menyusun baris nota baru untuk database. `kerja` = nota yang sudah ada (termasuk yang baru ditambahkan dalam satu batch). */
+function susunNotaBaru(draft, kerja, akhiranId = '') {
+  const items = bersihkanItems(draft.baris);
+  if (!draft.supplier.trim() || !items.length) throw new Error(PESAN_NOTA);
+  const bulan = draft.tanggal.slice(0, 7);
+  return {
+    id: `${draft.tanggal}_${Date.now().toString(36)}${akhiranId}`, // id unik, tidak ikut berubah saat nomor ditata ulang
     tanggal: draft.tanggal,
     supplier: draft.supplier.trim(),
-    alamat: draft.alamat,
-    bukti: draft.bukti.trim(),
+    alamat: draft.alamat ?? '',
+    bukti: (draft.bukti ?? '').trim(),
     items,
+    urut:
+      maks(
+        kerja.filter((n) => n.tanggal === draft.tanggal),
+        'urutAsli',
+      ) + 1,
+    no_po:
+      maks(
+        kerja.filter((n) => n.tanggal.startsWith(bulan)),
+        'no_po',
+      ) + 1,
   };
-  const notaHariItu = state.nota.filter((n) => n.tanggal === draft.tanggal && n.id !== draft.editId);
+}
+
+export async function simpanNota(draft) {
   let id = draft.editId;
+  let data;
   if (id) {
     // mode edit: perbarui nota yang ada
+    const items = bersihkanItems(draft.baris);
+    if (!draft.supplier.trim() || !items.length) throw new Error(PESAN_NOTA);
+    data = {
+      tanggal: draft.tanggal,
+      supplier: draft.supplier.trim(),
+      alamat: draft.alamat,
+      bukti: draft.bukti.trim(),
+      items,
+    };
     const lama = state.nota.find((n) => n.id === id);
-    if (lama && lama.tanggal !== draft.tanggal) data.urut = maks(notaHariItu, 'urutAsli') + 1; // pindah hari -> nota terakhir hari itu
+    if (lama && lama.tanggal !== draft.tanggal) {
+      const hariBaru = state.nota.filter((n) => n.tanggal === draft.tanggal && n.id !== id);
+      data.urut = maks(hariBaru, 'urutAsli') + 1; // pindah hari -> nota terakhir hari itu
+    }
     const { error } = await sb.from('nota').update(data).eq('id', id);
     if (error) throw error;
   } else {
-    id = `${draft.tanggal}_${Date.now().toString(36)}`; // id unik, tidak ikut berubah saat nomor ditata ulang
-    const bulan = draft.tanggal.slice(0, 7);
-    const baru = {
-      id,
-      ...data,
-      urut: maks(notaHariItu, 'urutAsli') + 1,
-      no_po:
-        maks(
-          state.nota.filter((n) => n.tanggal.startsWith(bulan)),
-          'no_po',
-        ) + 1,
-    };
-    const { error } = await sb.from('nota').insert(baru);
+    data = susunNotaBaru(draft, state.nota);
+    id = data.id;
+    const { error } = await sb.from('nota').insert(data);
     if (error) throw error;
   }
-  await simpanMasterBaru(data);
+  await simpanMasterBaru([data]);
   await muatData();
   return id;
+}
+
+/** Menyimpan banyak nota sekaligus (fitur Tempel dari Excel): satu kali simpan dan satu kali muat ulang. */
+export async function simpanNotaMassal(daftarDraft) {
+  const kerja = [...state.nota];
+  const baru = daftarDraft.map((draft, i) => {
+    const nota = susunNotaBaru(draft, kerja, i);
+    kerja.push({ ...nota, urutAsli: nota.urut });
+    return nota;
+  });
+  const { error } = await sb.from('nota').insert(baru);
+  if (error) throw error;
+  await simpanMasterBaru(baru);
+  await muatData();
+  return baru.length;
 }
 
 /** Muat nota ke formulir input untuk diedit. */
@@ -171,11 +215,22 @@ export function mulaiEdit(id) {
 }
 
 // Bahan & supplier yang dipakai di nota diingat (harga terakhir jadi harga standar berikutnya).
-async function simpanMasterBaru(nota) {
+async function simpanMasterBaru(daftarNota) {
   const bahan = gabung([], state.extra.bahan);
-  nota.items.forEach((i) => bahan.set(i.uraian.toLowerCase(), { nama: i.uraian, satuan: i.satuan, harga: i.harga }));
   const supplier = gabung([], state.extra.supplier);
-  if (nota.alamat) supplier.set(nota.supplier.toLowerCase(), { nama: nota.supplier, alamat: nota.alamat });
+  const dikenal = petaSupplier();
+  daftarNota.forEach((nota) => {
+    nota.items.forEach((i) =>
+      bahan.set(i.uraian.toLowerCase(), {
+        nama: i.uraian,
+        satuan: i.satuan,
+        harga: i.harga,
+        ...(i.kategori ? { kategori: i.kategori } : {}),
+      }),
+    );
+    const kunci = nota.supplier.toLowerCase();
+    if (nota.alamat || !dikenal.has(kunci)) supplier.set(kunci, { nama: nota.supplier, alamat: nota.alamat ?? '' });
+  });
   await sb.from('master_extra').upsert({ id: 'main', bahan: [...bahan.values()], supplier: [...supplier.values()] });
 }
 
@@ -191,3 +246,12 @@ export async function simpanRab(tanggal, perubahan) {
   if (error) throw error;
   state.rab[tanggal] = data;
 }
+
+/** Membaca tempelan Excel yang sedang ada di layar dan mengelompokkannya menjadi nota (untuk pratinjau dan simpan). */
+export const analisaTempelan = () =>
+  analisa(state.impor.teks, {
+    notaAda: state.nota,
+    daftarSupplier: [...petaSupplier().values()].map((s) => s.nama),
+    geserHari: state.impor.geser,
+    gantiSupplier: state.impor.ganti,
+  });
