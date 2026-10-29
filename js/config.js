@@ -14,9 +14,8 @@ export const INSTANSI = {
 };
 
 export const KOP_PO = [
-  'BADAN GIZI NASIONAL (NATIONAL NUTRITION AGENCY)',
-  'Gedung E Kompleks Kementerian Pertanian',
-  'Jalan Harsono RM Nomor 3 Ragunan, Pasar Minggu Jakarta, 12550',
+  'SPPG SIDOARJO TULANGAN TULANGAN',
+  'Jl. Raya Tulangan No 38, Kenongo, Tulangan, Sidoarjo, Jawa Timur, Indonesia',
 ];
 
 // Laporan "Anggaran Bahan Makanan": paket MBG dikelompokkan menurut pagu harga per porsi (lihat master-data SEKOLAH).
