@@ -659,3 +659,72 @@ td input:focus {
     page-break-inside: avoid;
   }
 }
+
+/* Tempel dari Excel */
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px dashed #c9c2ee;
+  border-radius: 16px;
+  background: #faf9fe;
+  color: var(--ink);
+  font:
+    400 12px/1.5 ui-monospace,
+    Consolas,
+    monospace;
+  resize: vertical;
+  white-space: pre;
+}
+textarea:focus {
+  outline: 0;
+  border-color: var(--violet);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(108, 77, 246, 0.14);
+}
+.langkah {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: var(--muted);
+}
+.langkah li {
+  margin-bottom: 4px;
+}
+kbd,
+code {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--violet-s);
+  color: var(--violet-d);
+  font:
+    500 12px ui-monospace,
+    Consolas,
+    monospace;
+}
+.nota-impor.lewat {
+  opacity: 0.55;
+}
+.nota-impor .row {
+  gap: 10px;
+}
+.nota-impor select {
+  width: auto;
+  min-width: 170px;
+  border-radius: 999px;
+}
+table.mini {
+  margin-top: 10px;
+}
+table.mini th,
+table.mini td {
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+table.mini tr.peringatan td {
+  background: var(--yellow-s);
+}
+.masalah {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--coral);
+  font-size: 13px;
+}
