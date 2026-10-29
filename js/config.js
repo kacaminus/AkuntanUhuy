@@ -15,7 +15,8 @@ export const INSTANSI = {
 
 export const KOP_PO = [
   'SPPG SIDOARJO TULANGAN TULANGAN',
-  'Jl. Raya Tulangan No 38, Kenongo, Tulangan, Sidoarjo, Jawa Timur, Indonesia',
+    'Jl. Raya Tulangan No 38, Kenongo, Kec. Tulangan, ',
+    'Kab. Sidoarjo, Prov. Jawa Timur, Indonesia',
 ];
 
 // Laporan "Anggaran Bahan Makanan": paket MBG dikelompokkan menurut pagu harga per porsi (lihat master-data SEKOLAH).
@@ -26,8 +27,8 @@ export const PAKET = [
 
 export const ANGGARAN = {
   kop: [
-    'Jln Raya Tulangan RT 002 RW 002, Desa Tulangan, Kec. Tulangan (Jl. Raya Tulangan No 38, Kenongo, Tulangan)',
-    'Sidoarjo, Jawa Timur, Indonesia',
+    'Jl. Raya Tulangan No 38, Kenongo, Kec. Tulangan, ',
+    'Kab. Sidoarjo, Prov. Jawa Timur, Indonesia',
   ],
   pembuat: 'Ira Sukma Yuliawati, S.Ak.',
   mengetahui: 'Fany Bella Nur Azizah, S.Farm.',
